@@ -1,6 +1,5 @@
--- =========================================
+
 -- EDA CHECKS - Market & Macro Pipeline
--- =========================================
 
 -- 1. Tables & row counts
 SELECT 'dim_asset' AS table_name, COUNT(*) AS rows FROM dim_asset;
@@ -66,4 +65,5 @@ WHERE p.symbol IN ('IBIT','FBTC')
   AND b.symbol = 'BTC-USD'
 ORDER BY p.date DESC
 LIMIT 20;
+
 -- End of EDA checks
