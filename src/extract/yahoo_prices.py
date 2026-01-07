@@ -19,12 +19,7 @@ class YahooExtractConfig:
 
 
 def _flatten_columns(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Flatten yfinance MultiIndex columns to single level strings.
-    Example:
-      ('Close','FBTC') -> 'Close__FBTC'
-      ('Date','')      -> 'Date'
-    """
+    
     if not isinstance(df.columns, pd.MultiIndex):
         return df
 
