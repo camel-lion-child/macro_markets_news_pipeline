@@ -12,14 +12,13 @@ import requests
 @dataclass(frozen=True)
 class CoinbaseCandleConfig:
     product_id: str = "BTC-USD"
-    granularity: int = 86400  # daily
+    granularity: int = 86400  
     start: Optional[str] = None  
     end: Optional[str] = None    
     out_path: str = "data/raw/coinbase_btc_usd_daily.parquet"
 
 
 def _iso_to_ts(s: str) -> str:
-    # Coinbase accepts RFC3339/ISO timestamps; use midnight UTC for dates.
     dt = datetime.fromisoformat(s).replace(tzinfo=timezone.utc)
     return dt.isoformat().replace("+00:00", "Z")
 
