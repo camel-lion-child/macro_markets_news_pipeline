@@ -1,3 +1,9 @@
+"""This script loads macro market indicators from a parquet file into a DuckDB fact table, 
+using an upsert strategy to maintain a clean daily time series.
+
+Ce script charge des indicateurs macro-économiques depuis un fichier parquet dans une table de faits DuckDB, 
+en utilisant une logique d’upsert pour maintenir une série temporelle quotidienne propre."""
+
 from __future__ import annotations
 
 import duckdb
@@ -5,14 +11,15 @@ import pandas as pd
 
 
 def init_schema(con: duckdb.DuckDBPyConnection) -> None:
+    #create fact table to store daily macro & market indicators
     con.execute(
         """
         CREATE TABLE IF NOT EXISTS fact_macro_market_daily (
             date DATE,
-            metric TEXT,
-            value DOUBLE,
-            source TEXT,
-            PRIMARY KEY (date, metric)
+            metric TEXT,    #macro indicator name (DXY, rates, gold etc...)
+            value DOUBLE,    #metric value
+            source TEXT,    #data source (Yahoo...)
+            PRIMARY KEY (date, metric)    #ensure 1 value per metric per day
         );
         """
     )
@@ -23,9 +30,10 @@ def load_parquet(parquet_path: str, db_path: str = "warehouse.duckdb") -> None:
 
     con = duckdb.connect(db_path)
     try:
-        init_schema(con)
-        con.register("stg_macro_mkt", df)
+        init_schema(con) #ensure schema exists before loading data
+        con.register("stg_macro_mkt", df) #register dataframe as temporary staging table
 
+        #upsert macro data into fact table (insert or update if already exists)
         con.execute(
             """
             INSERT INTO fact_macro_market_daily (date, metric, value, source)
@@ -37,12 +45,13 @@ def load_parquet(parquet_path: str, db_path: str = "warehouse.duckdb") -> None:
             """
         )
 
-        con.unregister("stg_macro_mkt")
-        con.commit()
+        con.unregister("stg_macro_mkt") #remove staging table after loading
+        con.commit() #commit transaction
     finally:
-        con.close()
+        con.close() #close database connection
 
 
 if __name__ == "__main__":
+    #load macro market indicators into duckdb warehouse
     load_parquet("data/raw/yahoo_macro_proxies.parquet", "warehouse.duckdb")
     print("Loaded Yahoo macro proxies into DuckDB")
