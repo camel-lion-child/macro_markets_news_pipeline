@@ -1,3 +1,9 @@
+"""This script extracts historical market data from Yahoo Finance for multiple tickers, reshapes the raw output into a clean tabular format,
+and saves it as a parquet file for downstream loading into the warehouse.
+
+Ce script extrait des données historiques depuis Yahoo Finance pour plusieurs tickers, transforme la sortie brute en format tabulaire propre, 
+puis la sauvegarde en parquet pour un chargement ultérieur dans le data warehouse."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -10,6 +16,7 @@ import yfinance as yf
 
 @dataclass(frozen=True)
 class YahooExtractConfig:
+    #configuration object for Yahoo finance extraction
     tickers: List[str]
     start: str  
     end: Optional[str] = None
@@ -19,7 +26,7 @@ class YahooExtractConfig:
 
 
 def _flatten_columns(df: pd.DataFrame) -> pd.DataFrame:
-    
+    #flatten multi index columns returned by yfinance for multiple tickers
     if not isinstance(df.columns, pd.MultiIndex):
         return df
 
@@ -27,8 +34,9 @@ def _flatten_columns(df: pd.DataFrame) -> pd.DataFrame:
     for a, b in df.columns.to_list():
         a = str(a) if a is not None else ""
         b = str(b) if b is not None else ""
+        #keep single level column name if second level is empty
         if b.strip() == "" or b == "nan":
-            flat_cols.append(a)
+            flat_cols.append(a) #combine field and ticker into one column name
         else:
             flat_cols.append(f"{a}__{b}")
     out = df.copy()
@@ -38,8 +46,8 @@ def _flatten_columns(df: pd.DataFrame) -> pd.DataFrame:
 
 def extract_yahoo_prices(cfg: YahooExtractConfig) -> pd.DataFrame:
     if not cfg.tickers:
-        raise ValueError("tickers list is empty")
-
+        raise ValueError("tickers list is empty") #stop if no ticker is provided
+    #download historical market data from Yahoo finance
     df = yf.download(
         tickers=cfg.tickers,
         start=cfg.start,
@@ -52,28 +60,31 @@ def extract_yahoo_prices(cfg: YahooExtractConfig) -> pd.DataFrame:
     )
 
     if df is None or df.empty:
-        raise RuntimeError("Yahoo returned empty dataframe (check tickers or date range).")
+        raise RuntimeError("Yahoo returned empty dataframe (check tickers or date range).") #fail fast if no data
 
-    df = df.reset_index()
-    df = _flatten_columns(df)
+    df = df.reset_index() #move date index back to normal column
+    df = _flatten_columns(df) #flatten multi index columns for easier downstream processing
 
     if "Date" in df.columns:
         df = df.rename(columns={"Date": "date"})
     elif "date" not in df.columns:
         df = df.rename(columns={df.columns[0]: "date"})
 
-    
+    #identify price columns
     value_cols = [c for c in df.columns if "__" in c]
     if not value_cols:
         raise RuntimeError(f"Could not find price columns after flattening. Columns: {list(df.columns)}")
 
+    #convert wide yahoo format into long format
     long = df.melt(id_vars=["date"], value_vars=value_cols, var_name="field_symbol", value_name="value")
 
+    #split combined column name into field & ticker symbol
     parts = long["field_symbol"].str.split("__", n=1, expand=True)
     long["field"] = parts[0]
     long["symbol"] = parts[1]
     long = long.drop(columns=["field_symbol"])
 
+    #pivot into a clean analytical table: 1 row per date and ticker
     wide = (
         long.pivot_table(index=["date", "symbol"], columns="field", values="value", aggfunc="first")
         .reset_index()
@@ -90,6 +101,7 @@ def extract_yahoo_prices(cfg: YahooExtractConfig) -> pd.DataFrame:
         }
     )
 
+    #validate required columns before returning
     required = {"date", "symbol", "open", "high", "low", "close", "volume"}
     missing = required - set(wide.columns)
     if missing:
@@ -98,16 +110,17 @@ def extract_yahoo_prices(cfg: YahooExtractConfig) -> pd.DataFrame:
             f"Got columns: {list(wide.columns)}"
         )
 
+    #standardize output types & recourse metadata
     wide["date"] = pd.to_datetime(wide["date"]).dt.date.astype(str)
     wide["symbol"] = wide["symbol"].astype(str)
     wide["source"] = "yahoo_finance"
-
+    #select final output columns
     cols = ["date", "symbol", "open", "high", "low", "close"]
     if "adj_close" in wide.columns:
         cols.append("adj_close")
     cols += ["volume", "source"]
 
-    return wide[cols].sort_values(["symbol", "date"]).reset_index(drop=True)
+    return wide[cols].sort_values(["symbol", "date"]).reset_index(drop=True) #return sorted & analysis-ready dataset
 
 
 def save_parquet(df: pd.DataFrame, out_path: str) -> Path:
@@ -118,6 +131,7 @@ def save_parquet(df: pd.DataFrame, out_path: str) -> Path:
 
 
 def run(cfg: YahooExtractConfig) -> Path:
+    #run full extraction pipeline: extract + save + preview
     df = extract_yahoo_prices(cfg)
     out = save_parquet(df, cfg.out_path)
     print(f"[Yahoo] Extracted {len(df):,} rows for {len(cfg.tickers)} tickers.")
@@ -127,6 +141,7 @@ def run(cfg: YahooExtractConfig) -> Path:
 
 
 if __name__ == "__main__":
+    #example configuration: extract Bitcoin ETF (Exchange Traded Fun) price history
     cfg = YahooExtractConfig(
         tickers=["IBIT", "FBTC", "GBTC", "BITB", "ARKB"],
         start="2024-01-01",
