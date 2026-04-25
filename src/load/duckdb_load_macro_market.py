@@ -16,9 +16,9 @@ def init_schema(con: duckdb.DuckDBPyConnection) -> None:
         """
         CREATE TABLE IF NOT EXISTS fact_macro_market_daily (
             date DATE,
-            metric TEXT,    #macro indicator name (DXY, rates, gold etc...)
-            value DOUBLE,    #metric value
-            source TEXT,    #data source (Yahoo...)
+            metric TEXT,           #macro indicator name (DXY, rates, gold etc...)
+            value DOUBLE,          #metric value
+            source TEXT,           #data source (Yahoo...)
             PRIMARY KEY (date, metric)    #ensure 1 value per metric per day
         );
         """
